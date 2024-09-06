@@ -1,4 +1,4 @@
-function [sysParam,txParam,payload] = helperOFDMSetParamsSDR(OFDMParam,dataParam)
+function [sysParam,txParam,payload] = helperOFDMSetParamsSDR(OFDMParam, dataParam, allRadioResource)
 %helperOFDMSetParamsSDR(OFDMParam,dataParam) Generates simulation parameters.
 %   This function generates transmit-specific and common transmitter/receiver
 %   parameters for the OFDM simulation, based on the high-level user
@@ -9,6 +9,7 @@ function [sysParam,txParam,payload] = helperOFDMSetParamsSDR(OFDMParam,dataParam
 %   [sysParam,txParam,payload] = helperOFDMSetParameters(userParam)
 %   OFDMParam - structure of OFDM related parameters
 %   dataParam - structure of data related parameters
+%   alloc_RadioResource - structure of allocated radio resource
 %   sysParam  - structure of system parameters common to tx and rx
 %   txParam   - structure of tx parameters
 %   payload   - known data payload generated for the trBlk size
@@ -30,7 +31,7 @@ sysParam.numSymPerFrame = dataParam.numSymPerFrame;
 
 sysParam.initState = [1 0 1 1 1 0 1]; % Scrambler/descrambler polynomials
 sysParam.scrMask   = [0 0 0 1 0 0 1];
-
+sysParam.allRadioResource = allRadioResource;
 sysParam.headerIntrlvNColumns = 12;   % Number of columns of header interleaver, must divide into 72 evenly
 sysParam.dataIntrlvNColumns = 18;     % Number of columns of data interleaver
 sysParam.dataConvK = 7;               % Convolutional encoder constraint length for data
@@ -59,12 +60,18 @@ sysParam.verbosity = dataParam.verbosity;
 % made to ensure that interdependent parameters are compatible with each
 % other.
 
-sysParam.FFTLen         = OFDMParam.FFTLength;      % FFT length
-sysParam.CPLen          = OFDMParam.CPLength;       % cyclic prefix length
-sysParam.usedSubCarr    = OFDMParam.NumSubcarriers;  % number of active subcarriers
-sysParam.BW             = OFDMParam.channelBW;          % total allocated bandwidth
-sysParam.scs            = OFDMParam.Subcarrierspacing;         % subcarrier spacing (Hz)
-sysParam.pilotSpacing   = OFDMParam.PilotSubcarrierSpacing; 
+sysParam.BS_id                 = OFDMParam.BS_id;               % 基站 ID
+sysParam.FFTLen                = OFDMParam.FFTLength;           % FFT 长度
+sysParam.CPLen                 = OFDMParam.CPLength;            % 循环前缀长度
+sysParam.usedSubCarr           = OFDMParam.NumSubcarriers;      % 总的使用子载波数量
+sysParam.subcarrier_start_index = OFDMParam.subcarrier_start_index;  % BWP 子载波起始索引
+sysParam.subcarrier_end_index   = OFDMParam.subcarrier_end_index;    % BWP 子载波结束索引
+sysParam.subcarrier_center_offset = OFDMParam.subcarrier_center_offset;  % 中心偏移
+sysParam.BWPoffset              = OFDMParam.BWPoffset;          % 对应分配的BWP人为设置Offset
+sysParam.channelBW                    = OFDMParam.channelBW;           % 分配的信道总带宽(滤波器通带)
+sysParam.signalBW                     = OFDMParam.signalBW;           % 分配的信号总带宽(滤波器阻带)
+sysParam.scs                   = OFDMParam.Subcarrierspacing;   % 子载波间隔 (Hz)
+sysParam.pilotSpacing          = OFDMParam.PilotSubcarrierSpacing;  % 导频子载波间隔
 codeRate                = str2num(dataParam.coderate);       % Coding rate
 if codeRate == 1/2
     sysParam.tracebackDepth =  30;                      % Traceback depth is 30 for coderate
@@ -92,9 +99,13 @@ elseif codeRate == 5/6
     txParam.codeRateIndex = 3;
 end
 
+% 计算该基站的导频索引
 numSubCar            = sysParam.usedSubCarr; % Number of subcarriers per symbol
-sysParam.pilotIdx    = ((sysParam.FFTLen-sysParam.usedSubCarr)/2) + ...
-    (1:sysParam.pilotSpacing:sysParam.usedSubCarr).';
+sysParam.pilotIdx = sysParam.subcarrier_start_index + ...
+    (1:sysParam.pilotSpacing:numSubCar).' -1;  % 导频间隔分布在 BWP 范围内
+% 
+% sysParam.pilotIdx    = ((sysParam.FFTLen-sysParam.usedSubCarr)/2) + ...
+%     (1:sysParam.pilotSpacing:sysParam.usedSubCarr).';
 
 % Check if a pilot subcarrier falls on the DC subcarrier; if so, then shift
 % up the rest of the pilots by a subcarrier
@@ -105,11 +116,11 @@ if any(sysParam.pilotIdx == dcIdx)
 end
 
 % Error checks
-pilotsPerSym = numSubCar/sysParam.pilotSpacing;
-if floor(pilotsPerSym) ~= pilotsPerSym
-    error('Number of subcarriers must be evenly divisible by the pilot spacing.');
-end
-sysParam.pilotsPerSym = pilotsPerSym;
+% pilotsPerSym = numSubCar/sysParam.pilotSpacing;
+% if floor(pilotsPerSym) ~= pilotsPerSym
+%     error('Number of subcarriers must be evenly divisible by the pilot spacing.');
+% end
+sysParam.pilotsPerSym = length(sysParam.pilotIdx);
 
 numIntrlvRows = 72/sysParam.headerIntrlvNColumns;
 if floor(numIntrlvRows) ~= numIntrlvRows
@@ -130,7 +141,7 @@ end
 % Calculate transport block size (trBlkSize) using parameters
 bitsPerModSym = log2(txParam.modOrder);     % Bits per modulated symbol
 numSubCar = sysParam.usedSubCarr;           % Number of subcarriers per symbol
-pilotsPerSym = numSubCar/sysParam.pilotSpacing; % Number of pilots per symbol
+pilotsPerSym = sysParam.pilotsPerSym; % Number of pilots per symbol
 uncodedPayloadSize = (numSubCar-pilotsPerSym)*numDataOFDMSymbols*bitsPerModSym;
 codedPayloadSize = floor(uncodedPayloadSize / sysParam.codeRateK) * ...
     sysParam.codeRateK;

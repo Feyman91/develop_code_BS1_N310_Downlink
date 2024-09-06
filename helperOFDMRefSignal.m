@@ -39,12 +39,18 @@ seq2 = [1; ...
 seq = [seq1 ; seq2];
 
 rep = floor(numSubCarr / length(seq));
-endSeqLen = (numSubCarr - (rep * length(seq)))/2;
-refSignal = [seq(end-(endSeqLen-1):end); repmat(seq,rep,1); seq(1:endSeqLen)];
+if numSubCarr < length(seq)
+    endSeqLen = floor((numSubCarr - (rep * length(seq)))/2);
+    refSignal = [seq(end-(endSeqLen-1):end); seq(1:endSeqLen+1)];
+else
+    endSeqLen = (numSubCarr - (rep * length(seq)))/2;
+    refSignal = [seq(end-(endSeqLen-1):end); repmat(seq,rep,1); seq(1:endSeqLen)];
+end
 
 % Output check
-if length(refSignal) > numSubCarr
-    error('Reference signal length too long for FFT.');
+if length(refSignal) ~= numSubCarr
+    error('Reference signal length not fit for FFT.');
 end
+
 
 end

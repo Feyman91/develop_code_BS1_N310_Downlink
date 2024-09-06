@@ -59,30 +59,48 @@ numCommonChannels = length(ssIdx) + length(rsIdx) + length(headerIdx);
 
 % Generate OFDM modulator output for each input configuration structure
 fftLen = sysParam.FFTLen;   % FFT length
+dcIdx = (fftLen/2)+1;           % DC subcarrier index
 cpLen  = sysParam.CPLen;    % CP length
 numSubCar = sysParam.usedSubCarr; % Number of subcarriers per OFDM symbol
+total_usedSubcar = sysParam.total_usedSubcc;    % number of total used subcarriers in FDRAN
 numSymPerFrame = sysParam.numSymPerFrame; % Number of OFDM symbols per frame
 
 % Initialize transmitter grid
-grid = zeros(numSubCar,numSymPerFrame);
+grid = struct();
+grid.rsgrid = zeros(numSubCar,numSymPerFrame);  % resource grid for used subcarrier
 
 % Derive actual parameters from inputs
 [modType,bitsPerModSym,puncVec,~] = ...
     getParameters(txParamConfig.modOrder,txParamConfig.codeRateIndex);
 
 %% Synchronization signal generation
-syncSignal = helperOFDMSyncSignal();
-syncSignalInd = (numSubCar/2) - 31 + (1:62);
+% Step 1: Synchronization signal in BWP (relative index)
+syncSignal = helperOFDMSyncSignal(sysParam);
+syncSignalIndRel = floor(numSubCar / 2) - floor(length(syncSignal) / 2) + (1:length(syncSignal));  % Relative index in BWP
 
-% Load synchronization signal on the grid
-grid(syncSignalInd,ssIdx) = syncSignal;
+% Step 2: Calculate absolute index in total FFT based on BWP start index
+syncSignalIndAbs = sysParam.subcarrier_start_index + syncSignalIndRel - 1;  % Absolute index in FFT grid
+% Check if DC subcarrier index is included in syncSignalIndAbs, then drop that
+if any(syncSignalIndAbs == dcIdx)
+    % Adjust indices: for indices >= dcIdx, add 1 to avoid DC subcarrier
+    syncSignalIndAbs(syncSignalIndAbs >= dcIdx) = syncSignalIndAbs(syncSignalIndAbs >= dcIdx) + 1;
+end
 
+% Step 3: Load synchronization signal on the grid
+grid.rsgrid(syncSignalIndRel, ssIdx) = syncSignal;
+grid.syncSignalIndAbs = syncSignalIndAbs;
 %% Reference signal generation
 refSignal = helperOFDMRefSignal(numSubCar);
-refSignalInd = 1:length(refSignal);
-
+refSignalIndRel = 1:length(refSignal);       % Relative index in BWP
+refSignalIndAbs = sysParam.subcarrier_start_index + refSignalIndRel - 1;  % Absolute index in FFT grid
+% Check if DC subcarrier index is included in refSignalIndAbs
+if any(refSignalIndAbs == dcIdx)
+    % Adjust indices: for indices >= dcIdx, add 1 to avoid DC subcarrier
+    refSignalIndAbs(refSignalIndAbs >= dcIdx) = refSignalIndAbs(refSignalIndAbs >= dcIdx) + 1;
+end
 % Load reference signals on the grid
-grid(refSignalInd,rsIdx(1)) = refSignal;
+grid.rsgrid(refSignalIndRel, rsIdx(1)) = refSignal;
+grid.refSignalIndAbs = refSignalIndAbs;
 
 %% Header generation
 % Generate header bits
@@ -157,10 +175,16 @@ headerIntrlvOut = reshape(reshape(headerConvOut,headerIntrlvLen,[]).',[],1);
 
 % Modulate header using BPSK
 headerSym = pskmod(headerIntrlvOut,2,InputType="bit");
-headerSymInd = (numSubCar/2)-36+(1:72);
-
+headerSymIndRel = floor(numSubCar / 2) - floor(length(headerSym) / 2) + (1:length(headerSym));  % Relative index in BWP
+headerSymIndAbs = sysParam.subcarrier_start_index + headerSymIndRel - 1;  % Absolute index in FFT grid
+% Check if DC subcarrier index is included in headerSymIndAbs
+if any(headerSymIndAbs == dcIdx)
+    % Adjust indices: for indices >= dcIdx, add 1 to avoid DC subcarrier
+    headerSymIndAbs(headerSymIndAbs >= dcIdx) = headerSymIndAbs(headerSymIndAbs >= dcIdx) + 1;
+end
 % Load header signal on the grid
-grid(headerSymInd,headerIdx) = headerSym;
+grid.rsgrid(headerSymIndRel, headerIdx) = headerSym;
+grid.headerSymIndAbs = headerSymIndAbs;
 
 %% Pilot generation
 % Number of data/pilots OFDM symbols per frame
@@ -168,7 +192,7 @@ numDataOFDMSymbols = numSymPerFrame - numCommonChannels;
 pilot    = helperOFDMPilotSignal(sysParam.pilotsPerSym);    % Pilot signal values
 pilot    = repmat(pilot,1,numDataOFDMSymbols);              % Pilot symbols per frame
 pilotGap = sysParam.pilotSpacing;                           % Pilot signal repetition gap in OFDM symbol
-pilotInd = (1:pilotGap:numSubCar).';
+pilotInd_relative = (1:pilotGap:numSubCar).';
 
 %% Data generation
 % Initialize convolutional encoder parameters
@@ -224,43 +248,73 @@ for i = 1:numDataOFDMSymbols
     modData(:,i) = qammod(intrlvOut,txParamConfig.modOrder,...
         UnitAveragePower=true,InputType="bit");
 end
-modDataInd = 1:numSubCar;
-
+% Data signal in BWP (relative index)
+alldatasymInx_relative = 1:numSubCar;
+alldatasymInxAbs = sysParam.subcarrier_start_index + alldatasymInx_relative - 1;  % Absolute index in FFT grid
+% Check if DC subcarrier index is included in modDataIndAbs
+if any(alldatasymInxAbs == dcIdx)
+    % Adjust indices: for indices >= dcIdx, add 1 to avoid DC subcarrier
+    alldatasymInxAbs(alldatasymInxAbs >= dcIdx) = alldatasymInxAbs(alldatasymInxAbs >= dcIdx) + 1;
+end
 % Remove the pilot indices from modData indices
-modDataInd(pilotInd) = [];
+modDataInd_relative = alldatasymInx_relative;
+modDataInd_relative(pilotInd_relative) = [];
+% Calculate absolute index in total FFT based on BWP start index
+pilotIndAbs = alldatasymInxAbs(pilotInd_relative).';
+modDataIndAbs = alldatasymInxAbs(modDataInd_relative);
 
 % Load data and pilots on the grid
-grid(pilotInd,(headerIdx+1:numSymPerFrame)) = pilot;
-grid(modDataInd,(headerIdx+1:numSymPerFrame)) = modData;
-
+grid.rsgrid(pilotInd_relative,(headerIdx+1:numSymPerFrame)) = pilot;
+grid.rsgrid(modDataInd_relative,(headerIdx+1:numSymPerFrame)) = modData;
+grid.modDataIndAbs = modDataIndAbs;
+grid.pilotIndAbs = pilotIndAbs;
    
 %% OFDM modulation
 dcIdx = (fftLen/2)+1;
-
+grid.dcIdx = dcIdx;
 % Generate sync symbol
-nullLen = (fftLen - 62)/2;
-syncNullInd = [1:nullLen dcIdx fftLen-nullLen+2:fftLen].';
+syncNullInd = [1:(syncSignalIndAbs(1) - 1), (syncSignalIndAbs(end) + 1):fftLen].';
+grid.syncSignalNullInd = syncNullInd;
+% Step: Check if DC subcarrier is already in the null indices
+if ~ismember(dcIdx, syncNullInd)
+    syncNullInd = [syncNullInd; dcIdx];  % Include DC subcarrier only if it's not already in null indices
+end
 ofdmSyncOut = ofdmmod(syncSignal,fftLen,cpLen,syncNullInd);
 
 % Generate reference symbol
-nullInd = [1:((fftLen-numSubCar)/2) dcIdx ((fftLen+numSubCar)/2)+1+1:fftLen].';
-ofdmRefOut  = ofdmmod(refSignal,fftLen,cpLen,nullInd);
+refNullInd = [1:(refSignalIndAbs(1) - 1), (refSignalIndAbs(end) + 1):fftLen].';  % Null indices outside the reference signal range
+grid.refSignalNullInd = refNullInd;
+% Step: Check if DC subcarrier is already in the null indices
+if ~ismember(dcIdx, refNullInd)
+    refNullInd = [refNullInd; dcIdx];  % Include DC subcarrier only if it's not already in null indices
+end
+ofdmRefOut  = ofdmmod(refSignal,fftLen,cpLen,refNullInd);
 
 % Generate header symbol
-nullLen = (fftLen - 72)/2;
-headerNullInd = [1:nullLen dcIdx fftLen-nullLen+2:fftLen].';
+headerNullInd = [1:(headerSymIndAbs(1) - 1), (headerSymIndAbs(end) + 1):fftLen].';  % Null indices outside the header signal range
+grid.headerSymNullInd = headerNullInd;
+% Step: Check if DC subcarrier is already in the null indices
+if ~ismember(dcIdx, headerNullInd)
+    headerNullInd = [headerNullInd; dcIdx];  % Include DC subcarrier only if it's not already in null indices
+end
 ofdmHeaderOut = ofdmmod(headerSym,fftLen,cpLen,headerNullInd);
 
 % Generate data symbols with embedded pilot subcarriers
-ofdmDataOut = ofdmmod(modData,fftLen,cpLen,nullInd,sysParam.pilotIdx,pilot);
+dataNullInd = [1:(alldatasymInxAbs(1) - 1), (alldatasymInxAbs(end) + 1):fftLen].';  % Null indices outside the data signal range
+grid.dataSymNullInd = dataNullInd;
+% Step: Check if DC subcarrier is already in the null indices
+if ~ismember(dcIdx, dataNullInd)
+    dataNullInd = [dataNullInd; dcIdx];  % Include DC subcarrier only if it's not already in null indices
+end
+ofdmDataOut = ofdmmod(modData,fftLen,cpLen,dataNullInd,pilotIndAbs,pilot);
 ofdmModOut = [ofdmSyncOut; ofdmRefOut; ofdmHeaderOut; ofdmDataOut];
 
 % Filter OFDM modulator output
 txWaveform = txObj.txFilter(ofdmModOut);
 
 % Collect diagnostic information
-diagnostics.ofdmModOut = txWaveform.';
-
+diagnostics.ofdmModOut = ofdmModOut.';
+diagnostics.txWaveform = txWaveform.';
 end
 
 function [modType,bitsPerModSym,puncVec,codeRate] = getParameters(modOrder,codeRateIndex)

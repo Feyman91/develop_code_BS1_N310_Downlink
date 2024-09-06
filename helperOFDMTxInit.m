@@ -25,7 +25,7 @@ txObj.crcDataGen   = crcConfig('Polynomial',sysParam.CRCPoly);
 
 % Plot frequency response
 if sysParam.enableScopes
-   [h,w] = freqz(txFilterCoef,1,1024,sysParam.scs*sysParam.FFTLen);
+   [h,w] = freqz(txFilterCoef,1,1024,sysParam.scs*sysParam.FFTLen,'whole');
    figure;
    plot(w,20*log10(abs(h)));
    grid on;

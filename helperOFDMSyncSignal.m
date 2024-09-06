@@ -1,4 +1,4 @@
-function syncSignal = helperOFDMSyncSignal()
+function ZCsyncSignal = helperOFDMSyncSignal(sysParam)
 %helperOFDMSyncSignal Generates synchronization signal
 %   This function returns a length-62 complex-valued vector for the
 %   frequency-domain representation of the sync signal.
@@ -17,18 +17,17 @@ function syncSignal = helperOFDMSyncSignal()
 
 
 % Copyright 2023 The MathWorks, Inc.
+BS_id = sysParam.BS_id;
+seqLen = min(63, sysParam.usedSubCarr);  % The ZC sequence length must fit within the BWP
 
-zcRootIndex = 25;
-seqLen      = 62;
-nPart1      = 0:((seqLen/2)-1);
-nPart2      = (seqLen/2):(seqLen-1);
-
-ZC = zadoffChuSeq(zcRootIndex, seqLen+1);
-syncSignal = [ZC(nPart1+1); ZC(nPart2+2)];
-
-% Output check
-if length(syncSignal) ~= 62
-    error('Sync signal must be of length 62.');
+rootindices63_total = [22 23 25 26 29 31 32 34 37 38 40 41 43 44 46 47 50];
+rootindices137_total = [21 22 23 24	25 26 27 28 29 30 31 32 33 34 35 36	37 38 39 40 41 42 43 44 45 46 47 48 49 50];
+zcRootIndex = mod(BS_id+(BS_id-1)*7+21, seqLen);  % Use BS_id to generate different root indices for each BS
+% Ensure zcRootIndex and seqLen are relatively prime (gcd(zcRootIndex, seqLen) = 1)
+while gcd(zcRootIndex, seqLen) ~= 1
+    zcRootIndex = zcRootIndex + 1;  % Adjust root index until it's relatively prime with seqLen
 end
+ZCsyncSignal = zadoffChuSeq(zcRootIndex, seqLen);
+
 
 end
