@@ -16,7 +16,13 @@ function [alloc_RadioResource, all_resource] = calculateBWPs(overAllOfdmParams, 
     
     % Step 4: 计算每个 BWP 的子载波数量
     BWP_bandwidth = effective_bandwidth / overAllOfdmParams.online_BS;  % 每个 BWP 的带宽，不包括保护间隔
-    
+    % Check if BWP_bandwidth is legal
+    % 1. The minimum available bandwidth is 72 subcarriers
+    % 2. The BWP bandwidth must be an integer
+    if BWP_bandwidth < 72 || mod(BWP_bandwidth, 1) ~= 0
+        error('Error: Defined BWP bandwidth (%d) is invalid. It must be at least 72, an integer.', BWP_bandwidth);
+    end
+
     % 初始化结构体用于存储结果
     all_resource.online_BS = overAllOfdmParams.online_BS;           % 在线基站的数量
     all_resource.num_BWPs = overAllOfdmParams.online_BS;            % BWP 数量等于基站数
@@ -44,24 +50,26 @@ function [alloc_RadioResource, all_resource] = calculateBWPs(overAllOfdmParams, 
         BWP_RB_count = BWP_length / 12;  % 每个资源块等于 12 个子载波
 
         % 保存 BWP 关键信息到结构体
+        all_resource.BWPs(i).BS_id  = i;
         all_resource.BWPs(i).subcarrier_start_index = BWP_start_index;
         all_resource.BWPs(i).subcarrier_end_index = BWP_end_index;
         all_resource.BWPs(i).subcarrier_center_offset = BWP_center_offset;
         all_resource.BWPs(i).UsedSubcc = BWP_length;
-        
         % 如果 i 等于 BS_id，则记录对应的 BWP 信息为 allocate_radio_resource
         if i == BS_id
+            alloc_RadioResource.BS_id  = i;
             alloc_RadioResource.subcarrier_start_index = BWP_start_index + bwp_offset;
             alloc_RadioResource.subcarrier_end_index = BWP_end_index + bwp_offset;
             alloc_RadioResource.subcarrier_center_offset = BWP_center_offset + bwp_offset;
             alloc_RadioResource.UsedSubcc = BWP_length;
             alloc_RadioResource.BWPoffset = bwp_offset;
             
-            % 保存 BWP 关键信息到结构体
+            % 保存同样的一份 BWP 关键信息到存储所有资源的结构体
             all_resource.BWPs(i).subcarrier_start_index = BWP_start_index + bwp_offset;
             all_resource.BWPs(i).subcarrier_end_index = BWP_end_index + bwp_offset;
             all_resource.BWPs(i).subcarrier_center_offset = BWP_center_offset + bwp_offset;
             all_resource.BWPs(i).UsedSubcc = BWP_length;
+            all_resource.BWPs(i).BWPoffset = bwp_offset;
         end
     end
 end
