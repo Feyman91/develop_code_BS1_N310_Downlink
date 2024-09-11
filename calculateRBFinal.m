@@ -3,18 +3,19 @@
 % 且该值应该小于等于maxRB
 function [RB_final, maxRB] = calculateRBFinal(OFDMParams, RB)
     % 计算当前的总子载波数
-    PilotSubcarrierSpacing = OFDMParams.PilotSubcarrierSpacing;
-    NumSubcarriers = RB * 12;
-
+    % PilotSubcarrierSpacing = OFDMParams.PilotSubcarrierSpacing;
+    % NumSubcarriers = RB * 12;
+    % 下面代码是为了计算能被pilot spacing整除的最大RB，当前的算法不需要这个强限制,故注释掉
     % 找到 12 和 PilotSubcarrierSpacing 的最小公倍数
-    LCM = lcm(12, PilotSubcarrierSpacing);
-
-    % 计算最小的 RB_final，使得 RB_final * 12 能被 PilotSubcarrierSpacing 整除
-    % NumSubcarriers_final 必须大于等于当前的 NumSubcarriers
-    NumSubcarriers_final = ceil(NumSubcarriers / LCM) * LCM;
-
-    % 计算最终的 RB_final和maxRB
-    RB_final = NumSubcarriers_final / 12;
+    % LCM = lcm(12, PilotSubcarrierSpacing);
+    % 
+    % % 计算最小的 RB_final，使得 RB_final * 12 能被 PilotSubcarrierSpacing 整除
+    % % NumSubcarriers_final 必须大于等于当前的 NumSubcarriers
+    % NumSubcarriers_final = ceil(NumSubcarriers / LCM) * LCM;
+    % 
+    % % 计算最终的 RB_final和maxRB
+    % RB_final = NumSubcarriers_final / 12;
+    RB_final = RB;
     maxRB = calculateMaxRB(OFDMParams);
 end
 
@@ -22,16 +23,18 @@ end
 function maxRB = calculateMaxRB(OFDMParams)
     % 根据保护带宽（滤波器过度带宽与通带比例不低于0.1的约定），计算出可能RB可能取到的最大值（系统带宽(used subcarrier)最大值）
     MaxRBNum_satisfyBand = round(round(0.45*OFDMParams.FFTLength/0.55)/12);
-    PilotSubcarrierSpacing = OFDMParams.PilotSubcarrierSpacing;
-    NumSubcarriers = MaxRBNum_satisfyBand * 12;
+    % PilotSubcarrierSpacing = OFDMParams.PilotSubcarrierSpacing;
+    % NumSubcarriers = MaxRBNum_satisfyBand * 12;
 
+    % 下面代码是为了计算能被pilot spacing整除的最大RB，当前的算法不需要这个强限制，故注释掉
     % 找到 12 和 PilotSubcarrierSpacing 的最小公倍数
-    LCM = lcm(12, PilotSubcarrierSpacing);
-
-    % 计算最小的 RB_final，使得 RB_final * 12 能被 PilotSubcarrierSpacing 整除
-    % NumSubcarriers_final 必须大于等于当前的 NumSubcarriers
-    NumSubcarriers_final = ceil(NumSubcarriers / LCM) * LCM;
+    % LCM = lcm(12, PilotSubcarrierSpacing);
+    % 
+    % % 计算最小的 RB_final，使得 RB_final * 12 能被 PilotSubcarrierSpacing 整除
+    % % NumSubcarriers_final 必须大于等于当前的 NumSubcarriers
+    % NumSubcarriers_final = ceil(NumSubcarriers / LCM) * LCM;
 
     % 计算最终的 maxRB
-    maxRB = NumSubcarriers_final / 12;
+    % maxRB = NumSubcarriers_final / 12;
+    maxRB = MaxRBNum_satisfyBand;
 end
