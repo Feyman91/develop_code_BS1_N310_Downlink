@@ -32,7 +32,7 @@ if ~strcmpi(radioDevice,'PLUTO')
 
     switch radioDevice
         case {'B200','B210'}
-            masterClockRate = sampleRate*3; % Minimum master clock rate should be 5 MHz
+            masterClockRate = sampleRate*2; % Minimum master clock rate should be 5 MHz
         case {'N320/N321'}
             masterClockRate = 245.76e6;
         case {'X310','X300'}
